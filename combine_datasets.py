@@ -1,16 +1,5 @@
-import json
-import csv
 from typing import Dict, Set, Tuple
-import statistics
 import pandas
-from scipy.stats import chi2_contingency
-import os
-import spotipy
-from pathlib import Path
-from spotipy.oauth2 import SpotifyClientCredentials
-from concurrent.futures import ThreadPoolExecutor
-import concurrent
-from multiprocessing.dummy import Pool
 
 SongPair = Tuple[str, str]
 
@@ -27,7 +16,7 @@ def filter_track_info(collab_track_ids: Set[str]):
 
     print(len(df))
     print(len(filtered_df))
-    
+
     with open('filtered_tracks.csv', 'w+') as f:
         filtered_df.to_csv(f, index=False)
 
@@ -42,12 +31,13 @@ def filter_triplets(known_tracks: Set[str]):
     df = pandas.read_csv('train_triplets.txt', sep='\s+')
     filtered_df = df.loc[df.iloc[:, 1].isin(known_tracks)]
     filtered_df.columns = ['user_id', 'song_id', 'play_count']
-    
+
     print(len(df))
     print(len(filtered_df))
 
     with open('filtered_triplets.txt', 'w+') as f:
         filtered_df.to_csv(f, index=False)
+
 
 def get_collaborative_dataset(start=0, count=-1) -> Dict[str, SongPair]:
     song_info: Dict[str, SongPair] = dict()

@@ -1,15 +1,8 @@
-import json
-import csv
-from typing import Dict, Set, Tuple
+from typing import Dict, Tuple
 import statistics
 import pandas
-from scipy.stats import chi2_contingency
-import os
 import spotipy
-from pathlib import Path
 from spotipy.oauth2 import SpotifyClientCredentials
-from concurrent.futures import ThreadPoolExecutor
-import concurrent
 from multiprocessing.dummy import Pool
 
 SongPair = Tuple[str, str]
@@ -41,11 +34,11 @@ def search_for_song(spotify, title, artist):
     retry = 3
     while True:
         try:
-            
+
             results = spotify.search(q=f'{title} {artist}', type='track')
             if results['tracks']['items']:
                 return results['tracks']['items'][0]['id']
-        except:
+        except Exception:
             if retry == 0:
                 return None
             retry -= 1
@@ -157,11 +150,11 @@ def get_info(quintuple):
     try:
         return {
             "song_id": sid,
-            "title": title.replace('\x90', '?').replace('\u0301', '?').replace('\U00061b22', '?').replace('\x9d', '?').replace('\u2b26', '?'),
-            "artist": artist.replace('\x90', '?').replace('\u0301', '?').replace('\U00061b22', '?').replace('\x9d', '?').replace('\u2b26', '?'),
+            "title": title,
+            "artist": artist,
             **get_analysis(sp, spid)
         }
-    except:
+    except Exception:
         print(f"FAILED ON {title} by {artist} ({spid})")
 
 
@@ -171,7 +164,7 @@ def get_metadata(triple):
     if not result:
         return None
     return (song_id, title, artist, result)
-    
+
 
 if __name__ == "__main__":
     client_credentials_manager = SpotifyClientCredentials()
@@ -182,8 +175,10 @@ if __name__ == "__main__":
         collab_songs: Dict[str, SongPair] = get_collaborative_dataset(j, 50)
         songs_with_spid: Dict[str, Tuple[str, str, str]] = dict()
 
-        song_quadruples = list(filter(None, pool.map(get_metadata, [(song_id, title, artist) 
-            for song_id, (title, artist) in collab_songs.items()])))
+        song_triples = [(song_id, title, artist)
+                        for song_id, (title, artist) in collab_songs.items()]
+        song_quadruples = list(
+            filter(None, pool.map(get_metadata, song_triples)))
 
         for sid, title, artist, spid in song_quadruples:
             songs_with_spid[sid] = (title, artist, spid)
@@ -193,12 +188,9 @@ if __name__ == "__main__":
 
         del collab_songs
 
-        all_info = list(filter(None, pool.map(get_info, [(sp, sid, title, artist, spid)
-            for sid, (title, artist, spid) in songs_with_spid.items()])))
-        # futures = [executor.submit(get_info, sp, sid, title, artist, spid)
-        #            for sid, (title, artist, spid) in songs_with_spid.items()]
-        # concurrent.futures.wait(futures)
-        # futures = asyncio.gather(*[get_info(sp, sid, title, artist, spid) for sid, (title, artist, spid) in songs_with_spid.items()])
+        song_quintuples = [(sp, sid, *rest) 
+                           for sid, rest in songs_with_spid.items()]
+        all_info = list(filter(None, pool.map(get_info, song_quintuples)))
 
         df = pandas.DataFrame(all_info)
 
