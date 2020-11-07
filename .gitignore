@@ -5,3 +5,4 @@ track_data.csv
 triplets.csv
 .vscode/
 .venv/
+__pycache__/

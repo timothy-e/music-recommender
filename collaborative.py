@@ -1,33 +1,21 @@
 import pandas
-from scipy.sparse import lil_matrix
+from scipy.sparse import coo_matrix, lil_matrix
 import sys
 import numpy as np
 from typing import List, Tuple, Dict
 import time
-import functools
+from utils import timeit
 
 ORIGINAL_DATASET_SIZE = 44120615
 
 
-def timeit(func):
-    @functools.wraps(func)
-    def timed(*args, **kw):
-        ts = time.time()
-        result = func(*args, **kw)
-        te = time.time()
-
-        print(f"{func.__name__:<20} {f'{(te-ts) * 100:,.2f} ms':>10}")
-        return result
-    return timed
-
-
-def get_collab_matrix(scale) -> Tuple[List[str], List[str], lil_matrix]:
+def get_collab_matrix(scale=1, fp="triplets.csv") -> Tuple[List[str], List[str], coo_matrix]:
     """Return `n` user_ids, `m` track_ids, and an `n x m` sparse matrix"""
 
     @timeit
     def open_csv() -> pandas.DataFrame:
         nrows = int(ORIGINAL_DATASET_SIZE * scale)
-        df = pandas.read_csv("triplets.csv", nrows=nrows)
+        df = pandas.read_csv(fp, nrows=nrows)
         print(f"Working with {nrows} rows")
         return df
 
@@ -52,15 +40,17 @@ def get_collab_matrix(scale) -> Tuple[List[str], List[str], lil_matrix]:
     user_ids, track_ids = read_values()
 
     @timeit
-    def create_matrix() -> lil_matrix:
+    def create_matrix() -> coo_matrix:
         """Converts the list of triplets into a sparse matrix"""
+        # construct as a list of list matrix because it's way easier
         M = lil_matrix((len(user_ids), len(track_ids)))
-        for i, row in df.iterrows():
-            user_ind = user_indices[row['user_id']]
-            track_ind = track_indices[row['song_id']]
+        
+        for _, row in df.iterrows():
+            user_ind = user_indices[row["user_id"]]
+            track_ind = track_indices[row["song_id"]]
 
-            M[user_ind, track_ind] = int(row['play_count'])
-        return M
+            M[user_ind, track_ind] = int(row["play_count"])
+        return M.tocoo() # save as coordinate matrix
 
     return user_ids, track_ids, create_matrix()
 
@@ -68,4 +58,4 @@ def get_collab_matrix(scale) -> Tuple[List[str], List[str], lil_matrix]:
 if __name__ == "__main__":
     arg = sys.argv[1] if len(sys.argv) > 1 else ""
     scale = -arg.count("s")
-    user_labels, track_labels, M = get_collab_matrix(scale=10**scale)
+    user_labels, track_labels, M = get_collab_matrix(scale=10 ** scale)
