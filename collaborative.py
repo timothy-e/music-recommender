@@ -3,16 +3,16 @@ from scipy.sparse import coo_matrix, lil_matrix
 import sys
 import numpy as np
 from typing import List, Tuple, Dict
-import time
 from utils import timeit
 
 ORIGINAL_DATASET_SIZE = 44120615
 
 
+@timeit(bold=True)
 def get_collab_matrix(scale=1, fp="triplets.csv") -> Tuple[List[str], List[str], coo_matrix]:
     """Return `n` user_ids, `m` track_ids, and an `n x m` sparse matrix"""
 
-    @timeit
+    @timeit()
     def open_csv() -> pandas.DataFrame:
         nrows = int(ORIGINAL_DATASET_SIZE * scale)
         df = pandas.read_csv(fp, nrows=nrows)
@@ -24,7 +24,7 @@ def get_collab_matrix(scale=1, fp="triplets.csv") -> Tuple[List[str], List[str],
     user_indices = {}
     track_indices = {}
 
-    @timeit
+    @timeit()
     def read_values() -> Tuple[List[str], List[str]]:
         """Return a list of user IDs and a list of track IDs, that will
         correspond to the rows/cols of the matrix"""
@@ -39,7 +39,7 @@ def get_collab_matrix(scale=1, fp="triplets.csv") -> Tuple[List[str], List[str],
 
     user_ids, track_ids = read_values()
 
-    @timeit
+    @timeit()
     def create_matrix() -> coo_matrix:
         """Converts the list of triplets into a sparse matrix"""
         # construct as a list of list matrix because it's way easier
