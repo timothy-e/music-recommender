@@ -1,5 +1,5 @@
 from collaborative import get_collab_matrix
-from utils import timeit
+from utils import timeit, convert_to_rank
 from scipy.sparse import coo_matrix
 import sys
 import numpy as np
@@ -15,22 +15,23 @@ class LogisticMF:
         gamma: float,
         iterations: int,
     ):
-        self.M = M  # n x m
+        self.ones = np.ones(shape=M.shape)
+
+        self.sparseM = M
+        self.M = M.todense() * alpha + self.ones  # n x m
         self.n_users, self.n_songs = M.shape
+
         self.n_latent_factors = n_latent_factors
         self.alpha = alpha
         self.l2_regulation = l2_regulation
         self.gamma = gamma
         self.iterations = iterations
-        self.ones = np.ones(shape=M.shape)
 
     @timeit(bold=True)
     def train(self):
         """
         Calculate and store the biases and vectors
         """
-
-        """n x f"""
         self.user_vecs = np.random.normal(
             size=(self.n_users, self.n_latent_factors))  # n x f
         self.song_vecs = np.random.normal(
@@ -121,10 +122,12 @@ class LogisticMF:
 
     @timeit()
     def log_likelihood(self):
+        """Return a single number of how well this model performs"""
+
         likelihood = 0
         A = self.user_vecs @ self.song_vecs.T
         A += self.user_biases + self.song_biases.T
-        B = A * self.M
+        B = np.multiply(A, self.M)
         likelihood += np.sum(B)
 
         del B
@@ -132,7 +135,7 @@ class LogisticMF:
         A = np.exp(A)
         A += self.ones
         A = np.log(A)
-        A = (self.M + self.ones) * A
+        A = np.multiply(self.M + self.ones, A)
         likelihood -= np.sum(A)
 
         del A
@@ -143,6 +146,16 @@ class LogisticMF:
             np.sum(np.square(self.song_vecs))
 
         return likelihood
+
+    @timeit(bold=True)
+    def get_rank_matrix(self) -> np.ndarray:
+        """Return a n*m matrix of ranks, where each position from M has the
+        value -1"""
+        newM = self.user_vecs @ self.song_vecs.T
+        for r, c in zip(self.sparseM.row, self.sparseM.col):
+            newM[r, c] = -1
+
+        return convert_to_rank(newM)
 
     @timeit()
     def write_vectors(self, fp_users: str, fp_songs: str):
@@ -164,10 +177,11 @@ if __name__ == "__main__":
     arg = sys.argv[1] if len(sys.argv) > 1 else ""
     scale = -arg.count("s")
     user_labels, track_labels, M = get_collab_matrix(
-        scale=10 ** scale, fp="triplets.csv"
+        scale=10 ** scale, fp="mid_triplets.csv"
     )
 
     lmf = LogisticMF(M, n_latent_factors=5, alpha=2,
                      l2_regulation=1, gamma=0.5, iterations=5)
     lmf.train()
-    lmf.write_vectors("user_vecs.csv", "song_vecs.csv")
+    print(lmf.log_likelihood())
+    lmf.get_rank_matrix()
