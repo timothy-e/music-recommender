@@ -6,3 +6,9 @@ triplets.csv
 .vscode/
 .venv/
 __pycache__/
+song_vecs.csv
+user_vecs.csv
+s.txt
+ss.txt
+sss.txt
+ssss*.txt

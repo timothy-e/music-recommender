@@ -1,15 +1,15 @@
 import pandas
 from scipy.sparse import coo_matrix, lil_matrix
 import sys
-import numpy as np
-from typing import List, Tuple, Dict
+from typing import List, Tuple
 from utils import timeit
 
 ORIGINAL_DATASET_SIZE = 44120615
 
 
 @timeit(bold=True)
-def get_collab_matrix(scale=1, fp="triplets.csv") -> Tuple[List[str], List[str], coo_matrix]:
+def get_collab_matrix(scale=1, fp="triplets.csv") \
+        -> Tuple[List[str], List[str], coo_matrix]:
     """Return `n` user_ids, `m` track_ids, and an `n x m` sparse matrix"""
 
     @timeit()
