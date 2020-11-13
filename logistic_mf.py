@@ -1,6 +1,6 @@
 from collaborative import get_collab_matrix
-from utils import timeit, convert_to_rank
-from scipy.sparse import coo_matrix
+from utils import timeit, convert_row_to_rank, matrix_mult
+from scipy.sparse import coo_matrix, csr_matrix
 from typing import Tuple, Optional
 import sys
 import numpy as np
@@ -15,12 +15,11 @@ class LogisticMF:
         l2_regulation: float,
         gamma: float,
         iterations: int,
-        partition_size: Optional[Tuple[int, int]] = None
     ):
         self.ones = np.ones(shape=M.shape)
 
-        self.sparseM = M
-        self.M = M.todense() * alpha + self.ones  # n x m
+        self.coo_M: coo_matrix = M
+        self.csr_M: csr_matrix = M.tocsr()
         self.n_users, self.n_songs = M.shape
 
         self.n_latent_factors = n_latent_factors
@@ -28,12 +27,14 @@ class LogisticMF:
         self.l2_regulation = l2_regulation
         self.gamma = gamma
         self.iterations = iterations
-        self.partition_size = partition_size
 
     @timeit(bold=True)
-    def train(self):
+    def train(
+        self, partition_size: Optional[Tuple[int, int]] = None, debug=False
+    ):
         """
         Calculate and store the biases and vectors
+        May calculate gradients in batches of size `partition_size`
         """
         self.user_vecs = np.random.normal(
             size=(self.n_users, self.n_latent_factors))  # n x f
@@ -50,11 +51,48 @@ class LogisticMF:
         ddx_user_bias_sum = np.zeros(shape=(self.n_users, 1))  # n x 1
         ddx_song_bias_sum = np.zeros(shape=(self.n_songs, 1))  # m x 1
 
+        partition_size = partition_size or self.M.shape
+
         @timeit(dark=True)
-        def train_iteration(
-                vecs, biases, ddx_vec, ddx_bias, ddx_vec_sum, ddx_bias_sum):
+        def subset_iteration(vecs, biases, ddx_vec_sum, ddx_bias_sum, ddx_fn):
             """Modify vecs, biases, ddx_vec_sum, and ddx_bias_sum with
             gradient descent"""
+            ddx_vec = np.empty(shape=vecs.shape)
+            ddx_bias = np.empty(shape=biases.shape)
+
+            for u_start in range(0, self.n_users, partition_size[0]):
+                for s_start in range(0, self.n_songs, partition_size[1]):
+                    u_end = u_start + partition_size[0]
+                    s_end = s_start + partition_size[1]
+                    if debug:
+                        print(
+                            "Working on the subset from " +
+                            f"({u_start}, {s_start}) to ({u_end}, {s_end})"
+                        )
+
+                    subset_ones = self.ones[u_start:u_end, s_start:s_end]
+                    subset_M = subset_ones + \
+                        self.alpha * self.csr_M[u_start:u_end, s_start:s_end]
+
+                    subset_user_vecs = self.user_vecs[u_start:u_end, :]
+                    subset_song_vecs = self.song_vecs[s_start:s_end, :]
+
+                    subset_user_biases = self.user_biases[u_start:u_end, :]
+                    subset_song_biases = self.song_biases[s_start:s_end, :]
+
+                    subset_ddx_vec, subset_ddx_bias = ddx_fn(
+                        subset_M, subset_user_vecs, subset_song_vecs,
+                        subset_user_biases, subset_song_biases, subset_ones
+                    )
+
+                    # sad that I can't make this fn user/song agnostic
+                    if vecs is self.user_vecs:
+                        ddx_vec[u_start:u_end] = subset_ddx_vec
+                        ddx_bias[u_start:u_end] = subset_ddx_bias
+                    else:
+                        ddx_vec[s_start:s_end] = subset_ddx_vec
+                        ddx_bias[s_start:s_end] = subset_ddx_bias
+
             # let z be one of [n, m]
             ddx_vec_sum += np.square(ddx_vec)  # z x f
             ddx_bias_sum += np.square(ddx_bias)  # z x 1
@@ -66,35 +104,26 @@ class LogisticMF:
             biases += np.multiply(bias_step_size, ddx_bias)  # z x 1  *  z x 1
 
         for i in range(self.iterations):
-            ddx_user_vec, ddx_user_bias = self.user_derivative(
-                self.M, self.user_vecs, self.song_vecs,
-                self.user_biases, self.song_biases, self.ones
-            )
-            train_iteration(
+            subset_iteration(
                 vecs=self.user_vecs,
                 biases=self.user_biases,
-                ddx_vec=ddx_user_vec,
-                ddx_bias=ddx_user_bias,
                 ddx_vec_sum=ddx_user_vec_sum,
                 ddx_bias_sum=ddx_user_bias_sum,
+                ddx_fn=self.user_derivative
             )
 
-            ddx_song_vec, ddx_song_bias = self.song_derivative(
-                self.M, self.user_vecs, self.song_vecs,
-                self.user_biases, self.song_biases, self.ones
-            )
-            train_iteration(
+            subset_iteration(
                 vecs=self.song_vecs,
                 biases=self.song_biases,
-                ddx_vec=ddx_song_vec,
-                ddx_bias=ddx_song_bias,
                 ddx_vec_sum=ddx_song_vec_sum,
                 ddx_bias_sum=ddx_song_bias_sum,
+                ddx_fn=self.song_derivative
             )
 
     def user_derivative(
         self, M, user_vecs, song_vecs, user_biases, song_biases, ones
     ):
+        """Return derivative of user vector and bias"""
         # n x m @ m x f = n x f
         ddx_vec = M @ song_vecs
         ddx_bias = np.sum(M, axis=1)  # n x 1
@@ -113,6 +142,7 @@ class LogisticMF:
     def song_derivative(
         self, M, user_vecs, song_vecs, user_biases, song_biases, ones
     ):
+        """Return derivative of song vector and bias"""
         ddx_vec = M.T @ user_vecs
         ddx_bias = np.sum(M, axis=0).T
 
@@ -143,10 +173,12 @@ class LogisticMF:
     def log_likelihood(self):
         """Return a single number of how well this model performs"""
 
+        # TODO upgrade to be efficient LL
+
         likelihood = 0
         A = self.user_vecs @ self.song_vecs.T
         A += self.user_biases + self.song_biases.T
-        B = np.multiply(A, self.M)
+        B = self.csr_M.dot(A)
         likelihood += np.sum(B)
 
         del B
@@ -166,15 +198,25 @@ class LogisticMF:
 
         return likelihood
 
-    @timeit(bold=True)
     def get_rank_matrix(self) -> np.ndarray:
-        """Return a n*m matrix of ranks, where each position from M has the
-        value -1"""
-        newM = self.user_vecs @ self.song_vecs.T
-        for r, c in zip(self.sparseM.row, self.sparseM.col):
-            newM[r, c] = -1
+        """Generates an n*m matrix of ranks one row at a time, where each
+        position from M has the value -1"""
+        replace_indices = sorted(zip(self.coo_M.row, self.coo_M.col))
+        replace_indicies_index = 0
+        for i, row in enumerate(matrix_mult(self.song_vecs, self.user_vecs)):
+            for j, val in enumerate(row):
+                # remove the listening counts
+                if (i, j) == replace_indices[replace_indicies_index]:
+                    row[j] = -1
+                    replace_indicies_index += 1
+                else:
+                    while replace_indices[replace_indicies_index][0] < i:
+                        replace_indicies_index += 1
+            yield convert_row_to_rank(row, i, self.coo_M.shape[0])
 
-        return convert_to_rank(newM)
+    @timeit(bold=True)
+    def time_get_rank_matrix(self):
+        print(f"{sum(1 for _ in lmf.get_rank_matrix())} rows")
 
     @timeit()
     def write_vectors(self, fp_users: str, fp_songs: str):
@@ -196,11 +238,11 @@ if __name__ == "__main__":
     arg = sys.argv[1] if len(sys.argv) > 1 else ""
     scale = -arg.count("s")
     user_labels, track_labels, M = get_collab_matrix(
-        scale=10 ** scale, fp="mini_triplets.csv"
+        scale=10 ** scale, fp="triplets.csv"
     )
 
     lmf = LogisticMF(M, n_latent_factors=5, alpha=2,
                      l2_regulation=1, gamma=0.5, iterations=5)
-    lmf.train()
-    print(lmf.log_likelihood())
-    print(lmf.get_rank_matrix())
+    lmf.train(partition_size=(100, 500))
+    # print(lmf.log_likelihood())
+    lmf.time_get_rank_matrix()
