@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
 from sklearn.metrics import pairwise_distances
+from collaborative import get_collab_matrix
+from utils import convert_to_rank
 from copy import deepcopy
 
 """[Create user profile matrix given triplets and track_data]
@@ -25,6 +27,11 @@ def get_user_profile_matrix(track_data,
                                            .median())
     user_profile_mat = []
     # remove titles, artist columns as they are non-numerical
+    track_data.drop(columns=[
+        'title', 'artist',
+        'segment_pitches_median', 'segment_pitches_stdev',
+        'segment_pitches_variance', 'segment_timbre_median',
+        'segment_timbre_stdev', 'segment_timbre_variance'], inplace=True)
     user_profile_mat_columns = track_data.columns
 
     for tuple in user_median_play_count.itertuples():
@@ -80,26 +87,30 @@ class contentbasedRec:
         user_profile_mat = self.user_profile_df.to_numpy()
         track_mat = self.track_df.to_numpy()
 
+        def set_observations_to_negative(new_matrix):
+            for r, c in zip(self.user_song_count_idxmat.row, self.user_song_count_idxmat.col):
+                new_matrix[r, c] = 0
+
         if "cosine" in self.similarity_measures:
             self.cosine_similarity_mat = pairwise_distances(X=user_profile_mat,
                                                             Y=track_mat,
                                                             metric="cosine")
-            self.cosine_rank_mat = deepcopy(self.cosine_similarity_mat)
-            self.cosine_rank_mat[self.user_song_count_idxmat] = -1
+            set_observations_to_negative(self.cosine_similarity_mat)
+            self.cosine_rank_mat = convert_to_rank(self.cosine_similarity_mat)
 
         if "euclidean" in self.similarity_measures:
             self.euclid_similarity_mat = pairwise_distances(X=user_profile_mat,
                                                             Y=track_mat,
                                                             metric="euclidean")
-            self.euclid_rank_mat = deepcopy(self.euclid_similarity_mat)
-            self.euclid_rank_mat[self.user_song_count_idxmat] = -1
+            set_observations_to_negative(self.euclid_similarity_mat)
+            self.euclid_rank_mat = convert_to_rank(self.cosine_similarity_mat)
 
         if "pearson" in self.similarity_measures:
             self.pearson_similarity_mat = pairwise_distances(X=user_profile_mat,
                                                              Y=track_mat,
                                                              metric="correlation")
-            self.pearson_rank_mat = deepcopy(self.pearson_similarity_mat)
-            self.pearson_rank_mat[self.user_song_count_idxmat] = -1
+            set_observations_to_negative(self.pearson_similarity_mat)
+            self.pearson_rank_mat = convert_to_rank(self.cosine_similarity_mat)
 
     def get_rank_matrix(self, similarity_measure):
         if similarity_measure == "cosine":
@@ -175,9 +186,8 @@ if __name__ == "__main__":
                                                   export_as_csv=True,
                                                   export_path="user_profile_mat.csv")
 
-    user_song_count_idxmat = get_user_song_count_idxmat(user_profile_mat_df,
-                                                        track_data,
-                                                        triplets_data)
+    _, _, user_song_count_idxmat = get_collab_matrix(fp="mini_triplets.csv")
+    print(user_song_count_idxmat)
 
     contentBasedModel = contentbasedRec(user_profile_mat_df,
                                         track_data,

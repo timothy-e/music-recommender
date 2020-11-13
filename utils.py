@@ -65,7 +65,7 @@ def print_progress_bar(
 
 
 def convert_row_to_rank(
-    row: np.ndarray, i: int, n_rows: Optional[int] = None
+    row: np.ndarray, i: int, n_rows: int
 ) -> np.ndarray:
     """Return a ranked row where -1s stay as -1s and do not impact rank"""
 
@@ -108,7 +108,9 @@ def convert_to_rank(M: np.ndarray) -> np.ndarray:
     If the score is -1, do not include it in the ranking (leave as -1).
     If the score is higher, it is ranked lower.
     """
-    return np.array([convert_row_to_rank(row, i) for i, row in enumerate(M)])
+    return np.array([
+        convert_row_to_rank(row, i, M.shape[0]) for i, row in enumerate(M)
+    ])
 
 
 def matrix_mult(A, B):
