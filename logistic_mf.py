@@ -200,17 +200,17 @@ class LogisticMF:
     def get_rank_matrix(self) -> np.ndarray:
         """Generates an n*m matrix of ranks one row at a time, where each
         position from M has the value -1"""
+
         replace_indices = sorted(zip(self.coo_M.row, self.coo_M.col))
         replace_indicies_index = 0
+
         for i, row in enumerate(matrix_mult(self.song_vecs, self.user_vecs)):
+            # remove the listening counts from each row
             for j, val in enumerate(row):
-                # remove the listening counts
                 if (i, j) == replace_indices[replace_indicies_index]:
                     row[j] = -1
                     replace_indicies_index += 1
-                else:
-                    while replace_indices[replace_indicies_index][0] < i:
-                        replace_indicies_index += 1
+
             yield convert_row_to_rank(row, i, self.coo_M.shape[0])
 
     @timeit(bold=True)
@@ -242,6 +242,6 @@ if __name__ == "__main__":
 
     lmf = LogisticMF(M, n_latent_factors=5, alpha=2,
                      l2_regulation=1, gamma=0.5, iterations=5)
-    lmf.train(partition_size=(100, 500))
+    lmf.train(partition_size=(500, 500))
     # print(lmf.log_likelihood())
     lmf.time_get_rank_matrix()
