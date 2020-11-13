@@ -2,8 +2,7 @@ import pandas as pd
 import numpy as np
 from sklearn.metrics import pairwise_distances
 from collaborative import get_collab_matrix
-from utils import convert_to_rank
-from copy import deepcopy
+from utils import convert_row_to_rank
 
 """[Create user profile matrix given triplets and track_data]
     NOTE: all columns in track_data must be of dtypes numerical (int or float)
@@ -83,45 +82,28 @@ class contentbasedRec:
         self.euclid_rank_mat = None
         self.pearson_rank_mat = None
 
-    def train_model(self):
+    def get_rank_matrix(self, metric):
         user_profile_mat = self.user_profile_df.to_numpy()
         track_mat = self.track_df.to_numpy()
 
-        def set_observations_to_negative(new_matrix):
-            for r, c in zip(self.user_song_count_idxmat.row, self.user_song_count_idxmat.col):
-                new_matrix[r, c] = 0
+        replace_indices = sorted(
+            zip(self.user_song_count_idxmat.row, self.user_song_count_idxmat.col))
+        replace_indicies_index = 0
 
-        if "cosine" in self.similarity_measures:
-            self.cosine_similarity_mat = pairwise_distances(X=user_profile_mat,
-                                                            Y=track_mat,
-                                                            metric="cosine")
-            set_observations_to_negative(self.cosine_similarity_mat)
-            self.cosine_rank_mat = convert_to_rank(self.cosine_similarity_mat)
+        # TODO: `pairwise_distances` prob might have to be turned into a
+        # generator but run it and see
+        for i, row in enumerate(pairwise_distances(
+            X=user_profile_mat,
+            Y=track_mat,
+            metric="correlation" if metric == "pearson" else metric
+        )):
+            # set observations to -1
+            for j, val in enumerate(row):
+                if (i, j) == replace_indices[replace_indicies_index]:
+                    row[j] = -1
+                    replace_indicies_index += 1
 
-        if "euclidean" in self.similarity_measures:
-            self.euclid_similarity_mat = pairwise_distances(X=user_profile_mat,
-                                                            Y=track_mat,
-                                                            metric="euclidean")
-            set_observations_to_negative(self.euclid_similarity_mat)
-            self.euclid_rank_mat = convert_to_rank(self.cosine_similarity_mat)
-
-        if "pearson" in self.similarity_measures:
-            self.pearson_similarity_mat = pairwise_distances(X=user_profile_mat,
-                                                             Y=track_mat,
-                                                             metric="correlation")
-            set_observations_to_negative(self.pearson_similarity_mat)
-            self.pearson_rank_mat = convert_to_rank(self.cosine_similarity_mat)
-
-    def get_rank_matrix(self, similarity_measure):
-        if similarity_measure == "cosine":
-            return self.cosine_rank_mat
-        elif similarity_measure == "euclidean":
-            return self.euclid_rank_mat
-        elif similarity_measure == "pearson":
-            return self.pearson_rank_mat
-        else:
-            raise Exception(
-                "contentbasedRec: unsupported similarity measure:", similarity_measure)
+            yield convert_row_to_rank(row, i, user_profile_mat.shape[0])
 
     def get_similarity_matrix(self, similarity_measure):
         if similarity_measure == "cosine":
