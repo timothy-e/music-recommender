@@ -16,8 +16,6 @@ class LogisticMF:
         gamma: float,
         iterations: int,
     ):
-        self.ones = np.ones(shape=M.shape)
-
         self.coo_M: coo_matrix = M
         self.csr_M: csr_matrix = M.tocsr()
         self.n_users, self.n_songs = M.shape
@@ -70,9 +68,9 @@ class LogisticMF:
                             f"({u_start}, {s_start}) to ({u_end}, {s_end})"
                         )
 
-                    subset_ones = self.ones[u_start:u_end, s_start:s_end]
-                    subset_M = subset_ones + \
-                        self.alpha * self.csr_M[u_start:u_end, s_start:s_end]
+                    subset_csr_M = self.csr_M[u_start:u_end, s_start:s_end]
+                    subset_ones = np.ones(shape=subset_csr_M.shape)
+                    subset_M = subset_ones + self.alpha * subset_csr_M
 
                     subset_user_vecs = self.user_vecs[u_start:u_end, :]
                     subset_song_vecs = self.song_vecs[s_start:s_end, :]
@@ -174,6 +172,7 @@ class LogisticMF:
         """Return a single number of how well this model performs"""
 
         # TODO upgrade to be efficient LL
+        self.ones = np.ones(shape=M.shape)
 
         likelihood = 0
         A = self.user_vecs @ self.song_vecs.T
