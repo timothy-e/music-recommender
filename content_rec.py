@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.metrics import pairwise_distances
+from copy import deepcopy
 
     """[Create user profile matrix given triplets and track_data] 
     NOTE: all columns in track_data must be of dtypes numerical (int or float)
@@ -22,16 +23,15 @@ def get_user_profile_matrix(track_data,
     user_median_play_count = (triplets_data.groupby(by=["user_id"])[["play_count"]]
                                            .median())
     user_profile_mat = []
-    user_profile_mat_columns = (track_data.select_dtypes(include = ['number'])
-                                          .columns)
+    user_profile_mat_columns = track_data.columns # remove titles, artist columns as they are non-numerical
     
     for tuple in user_median_play_count.itertuples():
         user_id = tuple.Index
         median_threshold = tuple.play_count
         user_triplets = triplets_data.loc[user_id]
-        filtered_songids = user_triplets.loc[(user_triplets.play_count >= median_threshold), ['song_id']]
-        filtered_songs = pd.merge(track_data, filtered_songids, how='inner', on="song_id")
-        user_profile = filtered_songs.mean(axis=0)
+        filtered_songids = user_triplets.loc[(user_triplets.play_count >= median_threshold)].song_id
+        filtered_songs = track_data[track_data.index.isin(filtered_songids)]
+        user_profile = filtered_songs.mean(axis=0 , numeric_only = True, skipna = True)
         user_profile_mat.append(user_profile)
     
     user_profile_mat_df = pd.DataFrame(user_profile_mat, 
@@ -42,16 +42,13 @@ def get_user_profile_matrix(track_data,
         user_profile_mat_df.to_csv(export_path, index=True)
     
     return user_profile_mat_df
-    
 
 
-    """[Compute similarity matrix for each user song pair given user profile matrix and track_data]
-    function: 
-        1. train_model: 
-            Return: 
-                S, a similarity matrix of size [n_users, n_songs] such that S_{ij} is the similarity measures between
-                user_i and song_j
+    """[Compute similarity and rank matrices for each user song pair given user profile matrix and track_data]
+    class function: 
+        1. train_model
         2. get_rank_matrix
+        3. get_similarity_matrix
     """
 
 class contentbasedRec:
@@ -59,24 +56,21 @@ class contentbasedRec:
     def __init__(self, 
                  user_profile_df : pd.core.frame.DataFrame, 
                  track_df: pd.core.frame.DataFrame,
-                 user_song_count_mat,
+                 user_song_count_idxmat,
                  similarity_measures = ["cosine", "euclidean", "pearson"]):
-        
-        if (not user_profile_df.columns.equals(track_df.columns)):
-            raise Exception("contentbasedRec: user_profile_df's columns does not match track_dfs")
         
         self.user_profile_df = user_profile_df
         self.track_df = track_df
-        self.user_song_count_mat = user_song_count_mat
+        self.user_song_count_idxmat = user_song_count_idxmat
         self.similarity_measures = similarity_measures
         
-    self.cosine_similarity_mat = None
-    self.euclid_similarity_mat = None
-    self.pearson_similarity_mat = None
-    
-    self.cosine_rank_mat = None
-    self.euclid_rank_mat = None
-    self.pearson_rank_mat = None
+        self.cosine_similarity_mat = None
+        self.euclid_similarity_mat = None
+        self.pearson_similarity_mat = None
+        
+        self.cosine_rank_mat = None
+        self.euclid_rank_mat = None
+        self.pearson_rank_mat = None
     
     def train_model(self):
         user_profile_mat = self.user_profile_df.to_numpy()
@@ -86,19 +80,25 @@ class contentbasedRec:
             self.cosine_similarity_mat = pairwise_distances(X = user_profile_mat, 
                                                             Y = track_mat,
                                                             metric = "cosine")
+            self.cosine_rank_mat = deepcopy(self.cosine_similarity_mat)
+            self.cosine_rank_mat[self.user_song_count_idxmat] = -1
             
         
         if "euclidean" in self.similarity_measures:
             self.euclid_similarity_mat = pairwise_distances(X = user_profile_mat, 
                                                             Y = track_mat,
                                                             metric = "euclidean")
+            self.euclid_rank_mat = deepcopy(self.euclid_similarity_mat)
+            self.euclid_rank_mat[self.user_song_count_idxmat] = -1
             
         if "pearson" in self.similarity_measures:
-            self.euclid_similarity_mat = pairwise_distances(X = user_profile_mat, 
-                                                            Y = track_mat,
-                                                            metric = "correlation")
+            self.pearson_similarity_mat = pairwise_distances(X = user_profile_mat, 
+                                                             Y = track_mat,
+                                                             metric = "correlation")
+            self.pearson_rank_mat = deepcopy(self.pearson_similarity_mat)
+            self.pearson_rank_mat[self.user_song_count_idxmat] = -1
         
-    def get_rank_matrix(similarity_measure):
+    def get_rank_matrix(self, similarity_measure):
         if similarity_measure == "cosine":
             return self.cosine_rank_mat
         elif similarity_measure == "euclidean":
@@ -107,35 +107,49 @@ class contentbasedRec:
             return self.pearson_rank_mat
         else :
             raise Exception("contentbasedRec: unsupported similarity measure:", similarity_measure)
+     
+    def get_similarity_matrix(self, similarity_measure):
+        if similarity_measure == "cosine":
+            return self.cosine_similarity_mat
+        elif similarity_measure == "euclidean":
+            return self.euclid_similarity_mat
+        elif similarity_measure == "pearson":
+            return self.pearson_similarity_mat
+        else :
+            raise Exception("contentbasedRec: unsupported similarity measure:", similarity_measure)
 
-        """[Get User Song Count Matrix with entries = 1 if user-song pair has listening count > 0]
-        NOTE: The order of rows follows the order of user_id in user_profile_mat_df and order of columns follows the order of song_ids in track_data
-        """
+
+    """[Get User Song Count Matrix with entries = True if user-song pair has listening count > 0, False otherwise]
+    NOTE: The order of rows follows the order of user_id in user_profile_mat_df and order of columns follows the order of song_ids in track_data
+          Used to turn all non-zero entries in the ranked matrices into -1
+    """
         
-def get_user_song_count_mat(user_profile_mat_df, 
-                            track_data,
-                            triplets_data):
+def get_user_song_count_idxmat(user_profile_mat_df, 
+                               track_data,
+                               triplets_data):
     
     user_ids = user_profile_mat_df.index
     user_ids_dict = {user_id: index[0] for index, user_id in np.ndenumerate(user_ids)}
     song_ids = track_data.index
     song_ids_dict = {song_id: index[0] for index, song_id in np.ndenumerate(song_ids)}
-    user_song_count_mat = np.zeros(shape=(len(user_ids),len(song_ids)))
+    user_song_count_idxmat = np.full((len(user_ids),len(song_ids)), False)
     
     for triplet in triplets_data.itertuples():
-        user_id = triplet.user_id
+        user_id = triplet.Index
         song_id = triplet.song_id
         user_id_idx = user_ids_dict[user_id]
         song_id_idx = song_ids_dict[song_id]
-        user_song_count_mat[user_id_idx, song_id_idx] = 1
+        user_song_count_idxmat[user_id_idx, song_id_idx] = True
     
-    return user_song_count_mat
+    return user_song_count_idxmat
     
 
     """[Run content based recommender]
+    NOTE: Clean track_data before calling this function
     """
     
 if __name__ == "__main__":
+    
         """
         1. Transform songs and users into vectors of the same subspace
         2. Compute similarity matrix with one of the three similarity measures
@@ -154,4 +168,14 @@ if __name__ == "__main__":
                                                       export_as_csv = True,
                                                       export_path = "user_profile_mat.csv")
         
+        user_song_count_idxmat = get_user_song_count_idxmat(user_profile_mat_df, 
+                                                            track_data,
+                                                            triplets_data)
+        
+        contentBasedModel = contentbasedRec(user_profile_mat_df, 
+                                            track_data,
+                                            user_song_count_idxmat,
+                                            similarity_measures = ["cosine", "euclidean", "pearson"])
+        
+        contentBasedModel.train_model()
         
