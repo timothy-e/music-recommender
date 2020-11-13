@@ -1,6 +1,7 @@
 from collaborative import get_collab_matrix
 from utils import timeit, convert_to_rank
 from scipy.sparse import coo_matrix
+from typing import Tuple, Optional
 import sys
 import numpy as np
 
@@ -14,6 +15,7 @@ class LogisticMF:
         l2_regulation: float,
         gamma: float,
         iterations: int,
+        partition_size: Optional[Tuple[int, int]] = None
     ):
         self.ones = np.ones(shape=M.shape)
 
@@ -26,6 +28,7 @@ class LogisticMF:
         self.l2_regulation = l2_regulation
         self.gamma = gamma
         self.iterations = iterations
+        self.partition_size = partition_size
 
     @timeit(bold=True)
     def train(self):
@@ -63,7 +66,10 @@ class LogisticMF:
             biases += np.multiply(bias_step_size, ddx_bias)  # z x 1  *  z x 1
 
         for i in range(self.iterations):
-            ddx_user_vec, ddx_user_bias = self.user_derivative()
+            ddx_user_vec, ddx_user_bias = self.user_derivative(
+                self.M, self.user_vecs, self.song_vecs,
+                self.user_biases, self.song_biases, self.ones
+            )
             train_iteration(
                 vecs=self.user_vecs,
                 biases=self.user_biases,
@@ -73,7 +79,10 @@ class LogisticMF:
                 ddx_bias_sum=ddx_user_bias_sum,
             )
 
-            ddx_song_vec, ddx_song_bias = self.song_derivative()
+            ddx_song_vec, ddx_song_bias = self.song_derivative(
+                self.M, self.user_vecs, self.song_vecs,
+                self.user_biases, self.song_biases, self.ones
+            )
             train_iteration(
                 vecs=self.song_vecs,
                 biases=self.song_biases,
@@ -83,41 +92,51 @@ class LogisticMF:
                 ddx_bias_sum=ddx_song_bias_sum,
             )
 
-    def user_derivative(self):
+    def user_derivative(
+        self, M, user_vecs, song_vecs, user_biases, song_biases, ones
+    ):
         # n x m @ m x f = n x f
-        ddx_vec = self.M @ self.song_vecs
-        ddx_bias = np.sum(self.M, axis=1)  # n x 1
+        ddx_vec = M @ song_vecs
+        ddx_bias = np.sum(M, axis=1)  # n x 1
 
-        A = self._common_derivative()  # n x m
+        A = self._common_derivative(
+            M, user_vecs, song_vecs, user_biases, song_biases, ones
+        )  # n x m
 
-        ddx_vec -= A @ self.song_vecs  # n x m @ m x f = n x f
-        ddx_vec -= self.l2_regulation * self.user_vecs  # n x f
+        ddx_vec -= A @ song_vecs  # n x m @ m x f = n x f
+        ddx_vec -= self.l2_regulation * user_vecs  # n x f
 
         ddx_bias -= np.expand_dims(np.sum(A, axis=1), 1)  # n x 1
 
         return (ddx_vec, ddx_bias)
 
-    def song_derivative(self):
-        ddx_vec = self.M.T @ self.user_vecs
-        ddx_bias = np.sum(self.M, axis=0).T
+    def song_derivative(
+        self, M, user_vecs, song_vecs, user_biases, song_biases, ones
+    ):
+        ddx_vec = M.T @ user_vecs
+        ddx_bias = np.sum(M, axis=0).T
 
-        A = self._common_derivative()
+        A = self._common_derivative(
+            M, user_vecs, song_vecs, user_biases, song_biases, ones
+        )
 
-        ddx_vec -= A.T @ self.user_vecs
-        ddx_vec -= self.l2_regulation * self.song_vecs
+        ddx_vec -= A.T @ user_vecs
+        ddx_vec -= self.l2_regulation * song_vecs
         ddx_bias -= np.expand_dims(np.sum(A, axis=0), 1)
 
         return (ddx_vec, ddx_bias)
 
-    def _common_derivative(self):
+    def _common_derivative(
+        self, M, user_vecs, song_vecs, user_biases, song_biases, ones
+    ):
         """Return e^a/(1+e^a) for every a in a matrix created by a
         combination of user and song vectors and biases"""
-        A = self.user_vecs @ self.song_vecs.T  # n x f @ f x m = n x m
-        A += self.user_biases
-        A += self.song_biases.T
+        A = user_vecs @ song_vecs.T  # n x f @ f x m = n x m
+        A += user_biases
+        A += song_biases.T
         A = np.exp(A)
-        A /= A + self.ones
-        A *= self.M + self.ones
+        A /= A + ones
+        A *= M + ones
         return A
 
     @timeit()
@@ -177,11 +196,11 @@ if __name__ == "__main__":
     arg = sys.argv[1] if len(sys.argv) > 1 else ""
     scale = -arg.count("s")
     user_labels, track_labels, M = get_collab_matrix(
-        scale=10 ** scale, fp="mid_triplets.csv"
+        scale=10 ** scale, fp="mini_triplets.csv"
     )
 
     lmf = LogisticMF(M, n_latent_factors=5, alpha=2,
                      l2_regulation=1, gamma=0.5, iterations=5)
     lmf.train()
     print(lmf.log_likelihood())
-    lmf.get_rank_matrix()
+    print(lmf.get_rank_matrix())

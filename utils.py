@@ -50,7 +50,7 @@ def convert_to_rank(M: np.ndarray) -> np.ndarray:
             sorted_vals = sorted_vals[1:]
         return [rank_value(val, sorted_vals) for val in row]
 
-    return np.matrix([rank_row(row) for row in M])
+    return np.array([rank_row(row) for row in M])
 
 
 if __name__ == "__main__":
