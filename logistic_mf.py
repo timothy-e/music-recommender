@@ -1,9 +1,10 @@
 from collaborative import get_collab_matrix
-from utils import timeit, convert_row_to_rank, matrix_mult
+from utils import timeit, convert_row_to_rank, matrix_mult, print_progress_bar
 from scipy.sparse import coo_matrix, csr_matrix
-from typing import Tuple, Optional
+from typing import Tuple, Optional, List
 import sys
 import numpy as np
+import math
 
 
 class LogisticMF:
@@ -12,7 +13,7 @@ class LogisticMF:
         M: coo_matrix,
         n_latent_factors: int,
         alpha: float,
-        l2_regulation: float,
+        l2_regularization: float,
         gamma: float,
         iterations: int,
     ):
@@ -22,7 +23,7 @@ class LogisticMF:
 
         self.n_latent_factors = n_latent_factors
         self.alpha = alpha
-        self.l2_regulation = l2_regulation
+        self.l2_regularization = l2_regularization
         self.gamma = gamma
         self.iterations = iterations
 
@@ -131,7 +132,7 @@ class LogisticMF:
         )  # n x m
 
         ddx_vec -= A @ song_vecs  # n x m @ m x f = n x f
-        ddx_vec -= self.l2_regulation * user_vecs  # n x f
+        ddx_vec -= self.l2_regularization * user_vecs  # n x f
 
         ddx_bias -= np.expand_dims(np.sum(A, axis=1), 1)  # n x 1
 
@@ -149,7 +150,7 @@ class LogisticMF:
         )
 
         ddx_vec -= A.T @ user_vecs
-        ddx_vec -= self.l2_regulation * song_vecs
+        ddx_vec -= self.l2_regularization * song_vecs
         ddx_bias -= np.expand_dims(np.sum(A, axis=0), 1)
 
         return (ddx_vec, ddx_bias)
@@ -167,32 +168,30 @@ class LogisticMF:
         A *= M + ones
         return A
 
-    @timeit()
+    @timeit(bold=True)
     def log_likelihood(self):
         """Return a single number of how well this model performs"""
-
-        # TODO upgrade to be efficient LL
-        self.ones = np.ones(shape=M.shape)
+        sparseM = self.csr_M.todok()
 
         likelihood = 0
-        A = self.user_vecs @ self.song_vecs.T
-        A += self.user_biases + self.song_biases.T
-        B = self.csr_M.dot(A)
-        likelihood += np.sum(B)
+        for u, (user_vec, user_bias) in enumerate(zip(
+            self.user_vecs, self.user_biases.flatten()
+        )):
+            print_progress_bar(u, self.n_users - 1,
+                               prefix='Computing log likelihood:')
+            xuys = self.song_vecs @ user_vec
+            for s, (song_vec, song_bias) in enumerate(zip(
+                self.song_vecs, self.song_biases.flatten()
+            )):
+                alpha_rus = self.alpha * \
+                    sparseM[(u, s)] if (u, s) in sparseM else 0
+                xu_ys_plus_biases = xuys[s] + user_bias + song_bias
+                likelihood += alpha_rus * xu_ys_plus_biases - \
+                    (1 + alpha_rus) * math.log(1 + math.exp(xu_ys_plus_biases))
 
-        del B
-
-        A = np.exp(A)
-        A += self.ones
-        A = np.log(A)
-        A = np.multiply(self.M + self.ones, A)
-        likelihood -= np.sum(A)
-
-        del A
-
-        likelihood -= 0.5 * self.l2_regulation * \
+        likelihood -= 0.5 * self.l2_regularization * \
             np.sum(np.square(self.user_vecs))
-        likelihood -= 0.5 * self.l2_regulation * \
+        likelihood -= 0.5 * self.l2_regularization * \
             np.sum(np.square(self.song_vecs))
 
         return likelihood
@@ -200,17 +199,17 @@ class LogisticMF:
     def get_rank_matrix(self) -> np.ndarray:
         """Generates an n*m matrix of ranks one row at a time, where each
         position from M has the value -1"""
+
         replace_indices = sorted(zip(self.coo_M.row, self.coo_M.col))
         replace_indicies_index = 0
+
         for i, row in enumerate(matrix_mult(self.song_vecs, self.user_vecs)):
+            # remove the listening counts from each row
             for j, val in enumerate(row):
-                # remove the listening counts
                 if (i, j) == replace_indices[replace_indicies_index]:
                     row[j] = -1
                     replace_indicies_index += 1
-                else:
-                    while replace_indices[replace_indicies_index][0] < i:
-                        replace_indicies_index += 1
+
             yield convert_row_to_rank(row, i, self.coo_M.shape[0])
 
     @timeit(bold=True)
@@ -241,7 +240,7 @@ if __name__ == "__main__":
     )
 
     lmf = LogisticMF(M, n_latent_factors=5, alpha=2,
-                     l2_regulation=1, gamma=0.5, iterations=5)
-    lmf.train(partition_size=(100, 500))
-    # print(lmf.log_likelihood())
+                     l2_regularization=1, gamma=0.5, iterations=5)
+    lmf.train(partition_size=(500, 500))
+    print(lmf.log_likelihood())
     lmf.time_get_rank_matrix()
