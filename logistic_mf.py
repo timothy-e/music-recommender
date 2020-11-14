@@ -1,5 +1,5 @@
 from collaborative import get_collab_matrix
-from utils import timeit, convert_row_to_rank, matrix_mult
+from utils import timeit, convert_row_to_rank, matrix_mult, print_progress_bar
 from scipy.sparse import coo_matrix, csr_matrix
 from typing import Tuple, Optional, List
 import sys
@@ -168,7 +168,7 @@ class LogisticMF:
         A *= M + ones
         return A
 
-    @timeit()
+    @timeit(bold=True)
     def log_likelihood(self):
         """Return a single number of how well this model performs"""
         sparseM = self.csr_M.todok()
@@ -177,6 +177,8 @@ class LogisticMF:
         for u, (user_vec, user_bias) in enumerate(zip(
             self.user_vecs, self.user_biases.flatten()
         )):
+            print_progress_bar(u, self.n_users - 1,
+                               prefix='Computing log likelihood:')
             xuys = self.song_vecs @ user_vec
             for s, (song_vec, song_bias) in enumerate(zip(
                 self.song_vecs, self.song_biases.flatten()

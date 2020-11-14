@@ -37,9 +37,9 @@ def print_progress_bar(
     iteration: int,
     total: int,
     prefix: str = '',
-    suffix: str = '',
+    suffix: str = 'Complete',
     decimals: int = 1,
-    length: int = 100,
+    length: int = 50,
     fill: str = '█',
     print_end: str = "\r"
 ):
@@ -59,9 +59,9 @@ def print_progress_bar(
     bar = fill * filled_length + '-' * (length - filled_length)
     print(f'\r{prefix} |{bar}| {percent}% {suffix}', end=print_end)
 
-    # new line when done
+    # clear bar when done
     if iteration == total:
-        print()
+        print(' ' * len(f'\r{prefix} |{bar}| {percent}% {suffix}'), end=print_end)
 
 
 def convert_row_to_rank(
@@ -89,10 +89,8 @@ def convert_row_to_rank(
             return -1
         return sorted_position(sorted_vals, val, total_len) / total_len
 
-    print_progress_bar(
-        i, n_rows - 1,
-        prefix='Ranking rows:', suffix='Complete', length=50
-    )
+    if n_rows is not None:
+        print_progress_bar(i, n_rows - 1, prefix='Ranking rows:')
 
     sorted_vals = sorted(row)
     while sorted_vals[0] == -1:
