@@ -78,6 +78,7 @@ class contentbasedRec:
         self.pearson_rank_mat = None
 
     def get_rank_matrix(self, metric):
+        """`metric` is one of "pearson", "euclidean", "cosine" """
         user_profile_mat = self.user_profile_df.to_numpy()
         track_mat = self.track_df.to_numpy()
 
@@ -94,7 +95,8 @@ class contentbasedRec:
         )):
             # set observations to -1
             for j, val in enumerate(row):
-                if (i, j) == replace_indices[replace_indicies_index]:
+                if replace_indicies_index == len(replace_indices) and \
+                    (i, j) == replace_indices[replace_indicies_index]:
                     row[j] = -1
                     replace_indicies_index += 1
 
@@ -158,14 +160,14 @@ if __name__ == "__main__":
     track_data = (pd.read_csv(track_data_path, encoding='latin-1')
                     .set_index(["song_id"]))
 
-    columns_to_drop = ['track_analysis_sample_rate', 'tatum_duration_variance', 'segment_duration_variance', 
+    columns_to_drop = ['track_analysis_sample_rate', 'tatum_duration_variance', 'segment_duration_variance',
                        'segment_loudness_max_variance', 'segment_loudness_start_variance', 'segment_loudness_end_variance',
                        'segment_pitches_variance', 'segment_timbre_variance', 'sections_duration_variance', 'sections_loudness_variance',
                        'sections_tempo_variance', 'sections_key_variance', 'title', 'artist',
                        'segment_pitches_median', 'segment_pitches_stdev', 'segment_timbre_median', 'segment_timbre_stdev']
-    
+
     track_data.drop(columns = columns_to_drop, inplace=True)
-    
+
     user_profile_mat_df = get_user_profile_matrix(track_data,
                                                   triplets_data,
                                                   export_as_csv=True,
@@ -180,4 +182,5 @@ if __name__ == "__main__":
                                         user_song_count_idxmat,
                                         similarity_measures=["cosine", "euclidean", "pearson"])
 
-    contentBasedModel.train_model()
+    for row in contentBasedModel.get_rank_matrix("pearson"):
+        continue
