@@ -29,7 +29,8 @@ class LogisticMF:
 
     @timeit(bold=True)
     def train(
-        self, partition_size: Optional[Tuple[int, int]] = None, debug=False
+        self, partition_size: Optional[Tuple[int, int]] = (500, 500),
+        debug=False
     ):
         """
         Calculate and store the biases and vectors
@@ -207,7 +208,8 @@ class LogisticMF:
         for i, row in enumerate(matrix_mult(self.song_vecs, self.user_vecs)):
             # remove the listening counts from each row
             for j, val in enumerate(row):
-                if (i, j) == replace_indices[replace_indicies_index]:
+                if replace_indicies_index == len(replace_indices) and \
+                    (i, j) == replace_indices[replace_indicies_index]:
                     row[j] = -1
                     replace_indicies_index += 1
             yield convert_row_to_rank(row, i, self.coo_M.shape[0])

@@ -58,7 +58,6 @@ def cross_validation(M, k):
         MPR = rank_sum / listen_sum
         print(MPR)
         avg_mpr += MPR
-        break  # only testing one time rn
 
     return avg_mpr / k
 
