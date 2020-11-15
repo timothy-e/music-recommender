@@ -64,7 +64,15 @@ Run
 python collaborative.py [-s]
 ```
 
-Running this file will print the log likelihood of the trained matrix, and also create a rank matrix.
+Running this file will read in the collaborative matrix and store it as a sparse matrix.
+
+Running
+
+```
+python logistic_mf.py [-s]
+```
+
+will print the log likelihood of the trained matrix, and also create a rank matrix.
 
 ## Content Filtering
 
