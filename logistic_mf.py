@@ -1,7 +1,7 @@
 from collaborative import get_collab_matrix
 from utils import timeit, convert_row_to_rank, matrix_mult, print_progress_bar
 from scipy.sparse import coo_matrix, csr_matrix
-from typing import Tuple, Optional, List
+from typing import Tuple, Optional
 import sys
 import numpy as np
 import math
@@ -177,8 +177,9 @@ class LogisticMF:
         for u, (user_vec, user_bias) in enumerate(zip(
             self.user_vecs, self.user_biases.flatten()
         )):
-            print_progress_bar(u, self.n_users - 1,
-                               prefix='Computing log likelihood:')
+            if self.n_users > 1:
+                print_progress_bar(u, self.n_users - 1,
+                                   prefix='Computing log likelihood:')
             xuys = self.song_vecs @ user_vec
             for s, (song_vec, song_bias) in enumerate(zip(
                 self.song_vecs, self.song_biases.flatten()
@@ -209,7 +210,6 @@ class LogisticMF:
                 if (i, j) == replace_indices[replace_indicies_index]:
                     row[j] = -1
                     replace_indicies_index += 1
-
             yield convert_row_to_rank(row, i, self.coo_M.shape[0])
 
     @timeit(bold=True)

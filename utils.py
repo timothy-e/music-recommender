@@ -89,11 +89,11 @@ def convert_row_to_rank(
             return -1
         return sorted_position(sorted_vals, val, total_len) / total_len
 
-    if n_rows is not None:
+    if n_rows is not None and n_rows > 1:
         print_progress_bar(i, n_rows - 1, prefix='Ranking rows:')
 
     sorted_vals = sorted(row)
-    while sorted_vals[0] == -1:
+    while len(sorted_vals) > 0 and sorted_vals[0] == -1:
         sorted_vals = sorted_vals[1:]
     total_len = len(sorted_vals) - 1
     return [rank_value(val, sorted_vals, total_len) for val in row]
