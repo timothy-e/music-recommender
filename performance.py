@@ -1,6 +1,6 @@
 import numpy as np
 import sys
-from scipy.sparse import coo_matrix, find
+from scipy.sparse import coo_matrix, find, csr_matrix
 from logistic_mf import LogisticMF
 from collaborative import get_collab_matrix
 
@@ -13,12 +13,8 @@ def cross_validation(M, k):
     np.random.shuffle(idx)
     test_sets = np.array_split(idx, k)  # split entries into k subarrays
     avg_mpr = 0.0
-    yikes = 0  # counts # of times we read in -1 rank ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    aiya = 0
 
     for test_set_i in test_sets:
-        print(len(test_set_i))
-
         # convert test set to dict of user: (dict of song: listen_count)
         test_set = {}
         for entry in test_set_i:
@@ -33,11 +29,8 @@ def cross_validation(M, k):
         # create training set
         training_M = M.copy()
         for entry in test_set_i:
-            # check we are setting correct values to 0
-            if training_M[i[entry], j[entry]] != v[entry]:
-                aiya += 1
-
             training_M[i[entry], j[entry]] = 0
+        training_M.eliminate_zeros()
         training_M = training_M.tocoo()
 
         # call logistic_mf w/ training_M
@@ -56,20 +49,13 @@ def cross_validation(M, k):
 
             for song in test_set[user].keys():
                 rank = user_song_ranks[song]
-                if rank == -1:
-                    yikes += 1  # ~~~~~~~~~~~~~~~~~~~~~~~~~
 
                 listen_sum += test_set[user][song]
                 rank_sum += test_set[user][song] * rank
 
             user += 1
 
-        # fix MPR below
-        print("yiiiikes x" + str(yikes))  # remove ~~~~~~~~~~~~~~~~~~~~~~~~~
-        print("aiyaaa " + str(aiya))
         MPR = rank_sum / listen_sum
-        print(rank_sum)
-        print(listen_sum)
         print(MPR)
         avg_mpr += MPR
         break  # only testing one time rn
@@ -83,4 +69,6 @@ if __name__ == "__main__":
     user_labels, track_labels, M = get_collab_matrix(
         scale=10 ** scale, fp="mid_triplets.csv"
     )
-    print(cross_validation(M.tocsr(), 10))
+
+    avg_mpr = cross_validation(M.tocsr(), 10)
+    print("Average MPR: " + str(avg_mpr))
