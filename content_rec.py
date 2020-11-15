@@ -96,7 +96,7 @@ class contentbasedRec:
             # set observations to -1
             for j, val in enumerate(row):
                 if replace_indicies_index == len(replace_indices) and \
-                    (i, j) == replace_indices[replace_indicies_index]:
+                        (i, j) == replace_indices[replace_indicies_index]:
                     row[j] = -1
                     replace_indicies_index += 1
 
@@ -129,7 +129,8 @@ def get_user_song_count_idxmat(user_profile_mat_df,
     song_ids = track_data.index
     song_ids_dict = {song_id: index[0]
                      for index, song_id in np.ndenumerate(song_ids)}
-    user_song_count_idxmat = lil_matrix((len(user_ids), len(song_ids)), dtype = np.dtype('b'))
+    user_song_count_idxmat = lil_matrix(
+        (len(user_ids), len(song_ids)), dtype=np.dtype('b'))
 
     for triplet in triplets_data.itertuples():
         user_id = triplet.Index
@@ -145,16 +146,12 @@ def get_user_song_count_idxmat(user_profile_mat_df,
     """
 
 
-if __name__ == "__main__":
-
+def get_content_based_model(track_data_path, triplets_data_path):
     """
     1. Transform songs and users into vectors of the same subspace
     2. Compute similarity matrix with one of the three similarity measures
     3. To recomnmend song, rank each song by their similarity score and take the top k songs
     """
-    track_data_path = "mini_track_data.csv"
-    triplets_data_path = "mini_triplets.csv"
-
     triplets_data = (pd.read_csv(triplets_data_path)
                        .set_index(["user_id"]))
     track_data = (pd.read_csv(track_data_path, encoding='latin-1')
@@ -166,7 +163,7 @@ if __name__ == "__main__":
                        'sections_tempo_variance', 'sections_key_variance', 'title', 'artist',
                        'segment_pitches_median', 'segment_pitches_stdev', 'segment_timbre_median', 'segment_timbre_stdev']
 
-    track_data.drop(columns = columns_to_drop, inplace=True)
+    track_data.drop(columns=columns_to_drop, inplace=True)
 
     user_profile_mat_df = get_user_profile_matrix(track_data,
                                                   triplets_data,
@@ -177,10 +174,11 @@ if __name__ == "__main__":
                                                         track_data,
                                                         triplets_data)
 
-    contentBasedModel = contentbasedRec(user_profile_mat_df,
-                                        track_data,
-                                        user_song_count_idxmat,
-                                        similarity_measures=["cosine", "euclidean", "pearson"])
+    return contentbasedRec(user_profile_mat_df,
+                           track_data,
+                           user_song_count_idxmat,
+                           similarity_measures=["cosine", "euclidean", "pearson"])
 
-    for row in contentBasedModel.get_rank_matrix("pearson"):
-        continue
+
+if __name__ == "__main__":
+    get_content_based_model("mini_track_data.csv", "mini_triplets.csv")
