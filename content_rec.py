@@ -1,8 +1,8 @@
 import pandas as pd
 import numpy as np
 from sklearn.metrics import pairwise_distances
-from collaborative import get_collab_matrix
 from utils import convert_row_to_rank
+from scipy.sparse import coo_matrix, lil_matrix
 
 """[Create user profile matrix given triplets and track_data]
     NOTE: all columns in track_data must be of dtypes numerical (int or float)
@@ -25,12 +25,7 @@ def get_user_profile_matrix(track_data,
     user_median_play_count = (triplets_data.groupby(by=["user_id"])[["play_count"]]
                                            .median())
     user_profile_mat = []
-    # remove titles, artist columns as they are non-numerical
-    track_data.drop(columns=[
-        'title', 'artist',
-        'segment_pitches_median', 'segment_pitches_stdev',
-        'segment_pitches_variance', 'segment_timbre_median',
-        'segment_timbre_stdev', 'segment_timbre_variance'], inplace=True)
+
     user_profile_mat_columns = track_data.columns
 
     for tuple in user_median_play_count.itertuples():
@@ -132,7 +127,7 @@ def get_user_song_count_idxmat(user_profile_mat_df,
     song_ids = track_data.index
     song_ids_dict = {song_id: index[0]
                      for index, song_id in np.ndenumerate(song_ids)}
-    user_song_count_idxmat = np.full((len(user_ids), len(song_ids)), False)
+    user_song_count_idxmat = lil_matrix((len(user_ids), len(song_ids)), dtype = np.dtype('b'))
 
     for triplet in triplets_data.itertuples():
         user_id = triplet.Index
@@ -141,7 +136,7 @@ def get_user_song_count_idxmat(user_profile_mat_df,
         song_id_idx = song_ids_dict[song_id]
         user_song_count_idxmat[user_id_idx, song_id_idx] = True
 
-    return user_song_count_idxmat
+    return user_song_count_idxmat.tocoo()
 
     """[Run content based recommender]
     NOTE: Clean track_data before calling this function
@@ -160,16 +155,25 @@ if __name__ == "__main__":
 
     triplets_data = (pd.read_csv(triplets_data_path)
                        .set_index(["user_id"]))
-    track_data = (pd.read_csv(track_data_path)
+    track_data = (pd.read_csv(track_data_path, encoding='latin-1')
                     .set_index(["song_id"]))
 
+    columns_to_drop = ['track_analysis_sample_rate', 'tatum_duration_variance', 'segment_duration_variance', 
+                       'segment_loudness_max_variance', 'segment_loudness_start_variance', 'segment_loudness_end_variance',
+                       'segment_pitches_variance', 'segment_timbre_variance', 'sections_duration_variance', 'sections_loudness_variance',
+                       'sections_tempo_variance', 'sections_key_variance', 'title', 'artist',
+                       'segment_pitches_median', 'segment_pitches_stdev', 'segment_timbre_median', 'segment_timbre_stdev']
+    
+    track_data.drop(columns = columns_to_drop, inplace=True)
+    
     user_profile_mat_df = get_user_profile_matrix(track_data,
                                                   triplets_data,
                                                   export_as_csv=True,
                                                   export_path="user_profile_mat.csv")
 
-    _, _, user_song_count_idxmat = get_collab_matrix(fp="mini_triplets.csv")
-    print(user_song_count_idxmat)
+    user_song_count_idxmat = get_user_song_count_idxmat(user_profile_mat_df,
+                                                        track_data,
+                                                        triplets_data)
 
     contentBasedModel = contentbasedRec(user_profile_mat_df,
                                         track_data,
