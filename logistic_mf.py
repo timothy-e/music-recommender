@@ -208,7 +208,7 @@ class LogisticMF:
         for i, row in enumerate(matrix_mult(self.song_vecs, self.user_vecs)):
             # remove the listening counts from each row
             for j, val in enumerate(row):
-                if replace_indicies_index == len(replace_indices) and \
+                if replace_indicies_index < len(replace_indices) and \
                     (i, j) == replace_indices[replace_indicies_index]:
                     row[j] = -1
                     replace_indicies_index += 1
